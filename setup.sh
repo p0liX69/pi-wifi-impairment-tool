@@ -230,6 +230,12 @@ sed \
     "$REPO_DIR/config/dnsmasq.conf" \
     > /etc/dnsmasq.d/wifi-impair.conf
 
+# Drop-in: ensure dnsmasq always starts after hostapd so wlan0 is up
+mkdir -p /etc/systemd/system/dnsmasq.service.d
+cp "$REPO_DIR/systemd/dnsmasq-after-hostapd.conf" \
+    /etc/systemd/system/dnsmasq.service.d/wifi-impair.conf
+systemctl daemon-reload
+
 systemctl enable dnsmasq
 success "dnsmasq configured (range: $DHCP_RANGE_START–$DHCP_RANGE_END)"
 
