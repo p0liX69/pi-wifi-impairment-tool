@@ -83,8 +83,9 @@ fi
 # ---------------------------------------------------------------------------
 
 info "Installing app to $INSTALL_DIR…"
-mkdir -p "$INSTALL_DIR"
-cp -r "$REPO_DIR"/{app.py,profiles.json,impair,templates,static} "$INSTALL_DIR/"
+mkdir -p "$INSTALL_DIR" "$INSTALL_DIR/static"
+cp -r "$REPO_DIR/app.py" "$REPO_DIR/profiles.json" "$REPO_DIR/impair" "$REPO_DIR/templates" "$INSTALL_DIR/"
+[[ -d "$REPO_DIR/static" ]] && cp -r "$REPO_DIR/static/." "$INSTALL_DIR/static/"
 
 # Create or update custom_profiles.json if not present
 [[ -f "$INSTALL_DIR/custom_profiles.json" ]] || echo '[]' > "$INSTALL_DIR/custom_profiles.json"
