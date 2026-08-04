@@ -1,0 +1,12 @@
+config.env
+custom_profiles.json
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.log
+.env
+*.egg-info/
+dist/
+.pytest_cache/

@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WiFi Impairment Control</title>
+<style>
+:root {
+  --bg: #0f172a;
+  --surface: #1e293b;
+  --surface2: #334155;
+  --border: #475569;
+  --text: #f1f5f9;
+  --muted: #94a3b8;
+  --accent: #3b82f6;
+  --accent-hover: #2563eb;
+  --danger: #ef4444;
+  --danger-hover: #dc2626;
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --radius: 10px;
+  --gap: 16px;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f1f5f9;
+    --surface: #ffffff;
+    --surface2: #e2e8f0;
+    --border: #cbd5e1;
+    --text: #0f172a;
+    --muted: #64748b;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --danger: #dc2626;
+    --danger-hover: #b91c1c;
+  }
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  font-size: 15px;
+  line-height: 1.5;
+}
+header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 14px var(--gap);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+header h1 { font-size: 1.1rem; font-weight: 700; letter-spacing: -0.02em; }
+#status-badge {
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 20px;
+  background: var(--surface2);
+  color: var(--muted);
+  transition: all 0.3s;
+}
+#status-badge.active {
+  background: #1c3a5f;
+  color: var(--warning);
+}
+#status-badge.clean {
+  background: #14342a;
+  color: var(--success);
+}
+main {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: var(--gap);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--gap);
+}
+.card h2 {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+
+/* Profiles */
+.profiles-scroll {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: none;
+}
+.profiles-scroll::-webkit-scrollbar { display: none; }
+.profile-btn {
+  flex-shrink: 0;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.profile-btn:hover { border-color: var(--accent); color: var(--accent); }
+.profile-btn.selected { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* Status summary */
+#summary-text {
+  font-size: 0.9rem;
+  color: var(--muted);
+  font-family: ui-monospace, monospace;
+  word-break: break-word;
+}
+#summary-text.active { color: var(--warning); }
+#summary-text.clean { color: var(--success); }
+
+/* Parameters */
+.params-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.param-row {
+  display: grid;
+  grid-template-columns: 110px 1fr 56px;
+  align-items: center;
+  gap: 10px;
+}
+.param-row label {
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-weight: 500;
+}
+.param-row input[type=range] {
+  width: 100%;
+  accent-color: var(--accent);
+  height: 6px;
+  cursor: pointer;
+}
+.param-row .val {
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-family: ui-monospace, monospace;
+  text-align: right;
+  color: var(--text);
+}
+.divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 6px 0;
+}
+.bandwidth-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 4px;
+}
+.bw-field label {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-weight: 500;
+  margin-bottom: 6px;
+}
+.bw-field input[type=number] {
+  width: 100%;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 0.95rem;
+  font-family: ui-monospace, monospace;
+  padding: 8px 10px;
+  transition: border-color 0.15s;
+}
+.bw-field input[type=number]:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.bw-hint {
+  font-size: 0.73rem;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+/* Actions */
+.actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.btn {
+  border: none;
+  border-radius: var(--radius);
+  font-size: 0.95rem;
+  font-weight: 700;
+  padding: 14px;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-apply  { background: var(--accent);  color: #fff; }
+.btn-apply:hover:not(:disabled)  { background: var(--accent-hover); }
+.btn-clear  { background: var(--surface); color: var(--danger); border: 1px solid var(--danger); }
+.btn-clear:hover:not(:disabled)  { background: var(--danger); color: #fff; }
+
+/* Clients card */
+#clients-list { font-size: 0.82rem; color: var(--muted); }
+.client-row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid var(--border); }
+.client-row:last-child { border-bottom: none; }
+
+/* Toast */
+#toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(80px);
+  background: var(--surface2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  transition: transform 0.3s ease;
+  z-index: 100;
+  white-space: nowrap;
+}
+#toast.show { transform: translateX(-50%) translateY(0); }
+#toast.error { border-color: var(--danger); color: var(--danger); }
+#toast.ok { border-color: var(--success); color: var(--success); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📡 WiFi Impairment</h1>
+  <div id="status-badge">⬤ Loading…</div>
+</header>
+
+<main>
+  <!-- Profiles -->
+  <div class="card">
+    <h2>Profiles</h2>
+    <div class="profiles-scroll" id="profile-buttons"></div>
+  </div>
+
+  <!-- Status -->
+  <div class="card">
+    <h2>Active Impairment</h2>
+    <div id="summary-text">Loading…</div>
+  </div>
+
+  <!-- Parameters -->
+  <div class="card">
+    <h2>Parameters</h2>
+    <div class="params-grid">
+      <div class="param-row">
+        <label>Latency</label>
+        <input type="range" id="latency_ms" min="0" max="2000" step="5" value="0" oninput="syncSlider(this,'latency_ms_val','ms')">
+        <span class="val" id="latency_ms_val">0 ms</span>
+      </div>
+      <div class="param-row">
+        <label>Jitter</label>
+        <input type="range" id="jitter_ms" min="0" max="500" step="1" value="0" oninput="syncSlider(this,'jitter_ms_val','ms')">
+        <span class="val" id="jitter_ms_val">0 ms</span>
+      </div>
+      <hr class="divider">
+      <div class="param-row">
+        <label>Packet Loss</label>
+        <input type="range" id="loss_pct" min="0" max="100" step="0.1" value="0" oninput="syncSlider(this,'loss_pct_val','%')">
+        <span class="val" id="loss_pct_val">0 %</span>
+      </div>
+      <div class="param-row">
+        <label>Duplicate</label>
+        <input type="range" id="duplicate_pct" min="0" max="100" step="0.1" value="0" oninput="syncSlider(this,'duplicate_pct_val','%')">
+        <span class="val" id="duplicate_pct_val">0 %</span>
+      </div>
+      <div class="param-row">
+        <label>Corrupt</label>
+        <input type="range" id="corrupt_pct" min="0" max="100" step="0.1" value="0" oninput="syncSlider(this,'corrupt_pct_val','%')">
+        <span class="val" id="corrupt_pct_val">0 %</span>
+      </div>
+      <div class="param-row">
+        <label>Reorder</label>
+        <input type="range" id="reorder_pct" min="0" max="100" step="0.1" value="0" oninput="syncSlider(this,'reorder_pct_val','%')">
+        <span class="val" id="reorder_pct_val">0 %</span>
+      </div>
+      <hr class="divider">
+    </div>
+
+    <div class="bandwidth-grid">
+      <div class="bw-field">
+        <label>Download Cap</label>
+        <input type="number" id="rate_down_kbps" min="0" max="1000000" value="0" placeholder="kbps">
+        <div class="bw-hint">0 = unlimited</div>
+      </div>
+      <div class="bw-field">
+        <label>Upload Cap</label>
+        <input type="number" id="rate_up_kbps" min="0" max="1000000" value="0" placeholder="kbps">
+        <div class="bw-hint">0 = unlimited</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Actions -->
+  <div class="actions">
+    <button class="btn btn-apply" id="btn-apply" onclick="applyImpairment()">Apply</button>
+    <button class="btn btn-clear" id="btn-clear" onclick="clearImpairment()">Clear</button>
+  </div>
+
+  <!-- Connected clients (nice-to-have) -->
+  <div class="card">
+    <h2>Connected Clients</h2>
+    <div id="clients-list">Loading…</div>
+  </div>
+</main>
+
+<div id="toast"></div>
+
+<script>
+'use strict';
+
+let profiles = [];
+let selectedProfile = null;
+
+function syncSlider(el, labelId, unit) {
+  const raw = parseFloat(el.value);
+  document.getElementById(labelId).textContent =
+    Number.isInteger(raw) ? raw + ' ' + unit : raw.toFixed(1) + ' ' + unit;
+  selectedProfile = null;
+  renderProfileButtons();
+}
+
+function setFormValues(p) {
+  ['latency_ms', 'jitter_ms'].forEach(k => {
+    const el = document.getElementById(k);
+    if (el) { el.value = p[k] ?? 0; syncSlider(el, k + '_val', 'ms'); }
+  });
+  ['loss_pct', 'duplicate_pct', 'corrupt_pct', 'reorder_pct'].forEach(k => {
+    const el = document.getElementById(k);
+    if (el) { el.value = p[k] ?? 0; syncSlider(el, k + '_val', '%'); }
+  });
+  document.getElementById('rate_down_kbps').value = p.rate_down_kbps ?? 0;
+  document.getElementById('rate_up_kbps').value = p.rate_up_kbps ?? 0;
+}
+
+function getFormValues() {
+  return {
+    latency_ms:    parseInt(document.getElementById('latency_ms').value) || 0,
+    jitter_ms:     parseInt(document.getElementById('jitter_ms').value) || 0,
+    loss_pct:      parseFloat(document.getElementById('loss_pct').value) || 0,
+    duplicate_pct: parseFloat(document.getElementById('duplicate_pct').value) || 0,
+    corrupt_pct:   parseFloat(document.getElementById('corrupt_pct').value) || 0,
+    reorder_pct:   parseFloat(document.getElementById('reorder_pct').value) || 0,
+    rate_down_kbps: parseInt(document.getElementById('rate_down_kbps').value) || 0,
+    rate_up_kbps:   parseInt(document.getElementById('rate_up_kbps').value) || 0,
+  };
+}
+
+function renderProfileButtons() {
+  const container = document.getElementById('profile-buttons');
+  container.innerHTML = '';
+  profiles.forEach(p => {
+    const btn = document.createElement('button');
+    btn.className = 'profile-btn' + (selectedProfile === p.name ? ' selected' : '');
+    btn.textContent = p.label;
+    btn.title = p.description || '';
+    btn.onclick = () => {
+      selectedProfile = p.name;
+      setFormValues(p);
+      renderProfileButtons();
+    };
+    container.appendChild(btn);
+  });
+}
+
+async function applyImpairment() {
+  const btn = document.getElementById('btn-apply');
+  btn.disabled = true;
+  const body = { ...getFormValues(), profile_name: selectedProfile };
+  try {
+    const res = await fetch('/apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await res.json();
+    if (data.ok) {
+      showToast('Applied: ' + data.data.summary, 'ok');
+      refreshStatus();
+    } else {
+      showToast(data.error || 'Apply failed', 'error');
+    }
+  } catch (e) {
+    showToast('Network error', 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function clearImpairment() {
+  const btn = document.getElementById('btn-clear');
+  btn.disabled = true;
+  try {
+    const res = await fetch('/clear', { method: 'POST' });
+    const data = await res.json();
+    if (data.ok) {
+      selectedProfile = 'clean';
+      renderProfileButtons();
+      setFormValues({ latency_ms: 0, jitter_ms: 0, loss_pct: 0, duplicate_pct: 0, corrupt_pct: 0, reorder_pct: 0, rate_down_kbps: 0, rate_up_kbps: 0 });
+      showToast('Cleared — pass-through', 'ok');
+      refreshStatus();
+    } else {
+      showToast(data.error || 'Clear failed', 'error');
+    }
+  } catch (e) {
+    showToast('Network error', 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function refreshStatus() {
+  try {
+    const res = await fetch('/status');
+    const data = await res.json();
+    if (!data.ok) return;
+    const { is_clean, summary, active_profile } = data.data;
+    const badge = document.getElementById('status-badge');
+    const sumEl = document.getElementById('summary-text');
+    if (is_clean) {
+      badge.textContent = '⬤ Clean';
+      badge.className = 'clean';
+      sumEl.textContent = 'No impairment — full pass-through';
+      sumEl.className = 'clean';
+    } else {
+      badge.textContent = '⬤ Active';
+      badge.className = 'active';
+      sumEl.textContent = summary;
+      sumEl.className = 'active';
+    }
+    if (active_profile && active_profile !== selectedProfile) {
+      selectedProfile = active_profile;
+      renderProfileButtons();
+      if (data.data.params) setFormValues(data.data.params);
+    }
+  } catch (_) {}
+}
+
+async function refreshClients() {
+  try {
+    const res = await fetch('/clients');
+    const data = await res.json();
+    const el = document.getElementById('clients-list');
+    if (!data.ok || data.data.length === 0) {
+      el.textContent = 'No clients connected';
+      return;
+    }
+    el.innerHTML = data.data.map(c =>
+      `<div class="client-row"><span>${c.hostname || 'unknown'}</span><span>${c.ip}</span><span style="color:var(--muted)">${c.mac}</span></div>`
+    ).join('');
+  } catch (_) {}
+}
+
+let toastTimer;
+function showToast(msg, type = '') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'show ' + type;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.className = '', 3000);
+}
+
+async function init() {
+  const res = await fetch('/profiles');
+  const data = await res.json();
+  profiles = data.data || [];
+  renderProfileButtons();
+  await refreshStatus();
+  await refreshClients();
+  setInterval(refreshStatus, 5000);
+  setInterval(refreshClients, 15000);
+}
+
+init();
+</script>
+</body>
+</html>

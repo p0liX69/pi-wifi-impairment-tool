@@ -1,0 +1,67 @@
+[
+  {
+    "name": "clean",
+    "label": "Clean",
+    "description": "No impairment — full pass-through",
+    "latency_ms": 0,
+    "jitter_ms": 0,
+    "loss_pct": 0.0,
+    "duplicate_pct": 0.0,
+    "corrupt_pct": 0.0,
+    "reorder_pct": 0.0,
+    "rate_down_kbps": 0,
+    "rate_up_kbps": 0
+  },
+  {
+    "name": "congested_wifi",
+    "label": "Congested WiFi",
+    "description": "~40ms latency, 10ms jitter, 1% loss, 10/2 Mbps",
+    "latency_ms": 40,
+    "jitter_ms": 10,
+    "loss_pct": 1.0,
+    "duplicate_pct": 0.0,
+    "corrupt_pct": 0.0,
+    "reorder_pct": 0.0,
+    "rate_down_kbps": 10000,
+    "rate_up_kbps": 2000
+  },
+  {
+    "name": "3g_mobile",
+    "label": "3G Mobile",
+    "description": "~150ms latency, 30ms jitter, 2% loss, 1.5/0.5 Mbps",
+    "latency_ms": 150,
+    "jitter_ms": 30,
+    "loss_pct": 2.0,
+    "duplicate_pct": 0.0,
+    "corrupt_pct": 0.0,
+    "reorder_pct": 0.0,
+    "rate_down_kbps": 1500,
+    "rate_up_kbps": 500
+  },
+  {
+    "name": "satellite",
+    "label": "Satellite",
+    "description": "~600ms latency, 20ms jitter, 0.5% loss, 25/3 Mbps",
+    "latency_ms": 600,
+    "jitter_ms": 20,
+    "loss_pct": 0.5,
+    "duplicate_pct": 0.0,
+    "corrupt_pct": 0.0,
+    "reorder_pct": 0.0,
+    "rate_down_kbps": 25000,
+    "rate_up_kbps": 3000
+  },
+  {
+    "name": "lossy_wifi",
+    "label": "Lossy WiFi",
+    "description": "Weak signal: 20ms latency, 50ms jitter, 7% loss, reordering, 5/1 Mbps",
+    "latency_ms": 20,
+    "jitter_ms": 50,
+    "loss_pct": 7.0,
+    "duplicate_pct": 0.5,
+    "corrupt_pct": 0.2,
+    "reorder_pct": 15.0,
+    "rate_down_kbps": 5000,
+    "rate_up_kbps": 1000
+  }
+]

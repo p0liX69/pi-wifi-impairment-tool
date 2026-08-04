@@ -1,0 +1,27 @@
+[Unit]
+Description=WiFi Impairment Control Web App
+Documentation=https://github.com/toddshipway/pi-wifi-impairment-tool
+After=network.target hostapd.service dnsmasq.service
+Requires=hostapd.service
+
+[Service]
+Type=simple
+User=impair
+Group=impair
+WorkingDirectory=/opt/wifi-impair
+Environment=PYTHONUNBUFFERED=1
+
+# Flask app listens on all interfaces — nftables restricts access by interface.
+ExecStart=/opt/wifi-impair/venv/bin/python /opt/wifi-impair/app.py
+
+Restart=on-failure
+RestartSec=5
+
+# Minimal privileges
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/wifi-impair
+
+[Install]
+WantedBy=multi-user.target
