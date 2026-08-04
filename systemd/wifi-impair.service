@@ -17,8 +17,6 @@ ExecStart=/opt/wifi-impair/venv/bin/python /opt/wifi-impair/app.py
 Restart=on-failure
 RestartSec=5
 
-# Minimal privileges
-NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict
 ReadWritePaths=/opt/wifi-impair
