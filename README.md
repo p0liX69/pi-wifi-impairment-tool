@@ -89,7 +89,7 @@ ssh pi@<eth0-ip>
 ### 3. Clone the repo
 
 ```bash
-git clone https://github.com/toddshipway/pi-wifi-impairment-tool.git
+git clone https://github.com/p0liX69/pi-wifi-impairment-tool.git
 cd pi-wifi-impairment-tool
 ```
 
