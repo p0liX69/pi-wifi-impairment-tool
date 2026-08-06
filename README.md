@@ -58,10 +58,17 @@ All parameters can be stacked simultaneously: e.g. 200ms latency + 2% loss + 5 M
 | Pi OS Bookworm (64-bit) | Lite image is sufficient; Desktop image also works |
 | Ethernet uplink | Built-in RJ45 or a USB-C → Ethernet adapter for `eth0` |
 | Onboard WiFi | Used as the AP (`wlan0`); 2.4GHz is the safe default |
+| PCIe M.2 WiFi HAT (optional) | e.g. ZDE ZP590A — auto-detected and used as the AP when present |
 
 **Important:** The Pi 5's onboard WiFi chip (Broadcom, `brcmfmac`) cannot act as both an AP and a WiFi client at the same time. Your internet uplink **must** be Ethernet (`eth0`), not WiFi. If you later need WiFi as the uplink too, a second USB WiFi dongle with an AP-capable driver is required.
 
 5GHz AP mode support on `brcmfmac` varies by board revision. If you want to try it, see [Switching to 5GHz](#switching-to-5ghz). The default setup uses 2.4GHz, which works on all Pi 5 units.
+
+### PCIe M.2 WiFi HAT (optional, better AP)
+
+If you fit a PCIe→M.2 E-key HAT such as the **ZDE ZP590A** with an M.2 WiFi module (Intel BE200 WiFi 7, AX210 WiFi 6E, AX200 WiFi 6, or MediaTek MT7922), `setup.sh` will detect it and use it as the access point automatically. This gives you a stronger, dual/tri-band AP than the onboard Broadcom radio. See [Using a PCIe M.2 WiFi HAT](#using-a-pcie-m2-wifi-hat) below.
+
+> **AP-mode caveat:** MediaTek MT7922 has solid AP support. Intel cards (AX200/AX210/BE200) frequently expose **no usable AP mode** in `iwlwifi` — setup detects this and keeps the onboard WiFi rather than configuring an AP that won't start. For a reliable dedicated AP, the MediaTek MT7922 is the safest choice.
 
 ---
 
@@ -121,6 +128,7 @@ sudo bash setup.sh
 This script is **idempotent** — safe to run multiple times. It:
 
 - Installs `hostapd`, `dnsmasq`, `nftables`, `iproute2`, `python3`
+- Detects a PCIe M.2 WiFi HAT (e.g. ZDE ZP590A) and, if present and AP-capable, uses it as the AP — see [Using a PCIe M.2 WiFi HAT](#using-a-pcie-m2-wifi-hat)
 - Enables IPv4 forwarding (`net.ipv4.ip_forward=1`)
 - Persists the `ifb` kernel module (needed for upload shaping)
 - Tells NetworkManager to leave `wlan0` alone
@@ -252,6 +260,57 @@ sudo systemctl restart wifi-impair
 3. If the AP doesn't come up (check `journalctl -u hostapd`), revert to `hw_mode=g` / `channel=6`.
 
 If 5GHz proves unreliable, a USB WiFi dongle with proper AP-mode support (e.g. one with the `mt76` or `ath9k_htc` driver) is the reliable path.
+
+---
+
+## Using a PCIe M.2 WiFi HAT
+
+A PCIe→M.2 E-key adapter HAT (such as the **ZDE ZP590A**) lets you plug a modern M.2 WiFi module into the Pi 5's PCIe port and use it as the access point instead of the onboard Broadcom radio — giving you WiFi 6/6E/7, more concurrent clients, and better throughput.
+
+**Supported modules** (auto-detected by chipset):
+
+| Module | Driver | Firmware package | AP mode |
+|---|---|---|---|
+| MediaTek MT7922 | `mt7921e` | `firmware-mediatek` / `firmware-misc-nonfree` | Good — recommended |
+| Intel AX200 / AX210 / BE200 | `iwlwifi` | `firmware-iwlwifi` | Often unsupported |
+
+### How it works
+
+With `PCIE_WIFI="auto"` (the default) in `config.env`, `setup.sh` will:
+
+1. Enable the Pi 5 PCIe port by adding `dtparam=pciex1` to `config.txt` (needs a reboot the first time).
+2. Detect a wireless card on the PCIe bus via `lspci`.
+3. Install the matching firmware package for the chipset.
+4. Confirm the card advertises **AP mode** (`iw phy … info`).
+5. If all of the above pass, use the card's interface (e.g. `wlan1`) as the AP — otherwise fall back to the onboard `wlan0`.
+
+### First run (enabling PCIe)
+
+On a fresh Pi where PCIe has never been enabled, the card won't be visible until after a reboot. The first `sudo bash setup.sh` enables PCIe and prints:
+
+```
+NOTE: The Pi 5 PCIe port was just enabled. Reboot and re-run
+      setup.sh so the M.2 WiFi card is detected and used as the AP.
+```
+
+Reboot, then run `sudo bash setup.sh` again. This time the card is detected and configured as the AP. Setup prints the interface it chose:
+
+```
+[OK]    Using PCIe WiFi card 'wlan1' (MediaTek (mt7921e)) as the access point
+```
+
+### Options in `config.env`
+
+```bash
+PCIE_WIFI="auto"    # auto = detect & use the M.2 card; off = always use onboard WiFi
+PCIE_WIFI_GEN=2     # PCIe link gen: 2 (safe) or 3 (faster, uncertified — try if the card is flaky at Gen2)
+```
+
+### Troubleshooting
+
+- **Card not detected after reboot:** confirm it enumerated with `lspci` — you should see a `Network controller`. If not, reseat the module and check the HAT's PCIe FPC cable orientation.
+- **Detected but no interface:** the driver couldn't load firmware. Check `dmesg | grep -Ei 'iwlwifi|mt7921|firmware'`. The BE200 in particular needs a recent kernel (6.6+) and up-to-date `firmware-iwlwifi`.
+- **`does not advertise AP mode`:** the card's driver has no AP support (common on Intel). Use a MediaTek MT7922, or set `PCIE_WIFI="off"` to stay on the onboard radio.
 
 ---
 
