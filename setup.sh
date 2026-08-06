@@ -20,6 +20,35 @@ success() { echo "[OK]    $*"; }
 warn()    { echo "[WARN]  $*" >&2; }
 die()     { echo "[ERROR] $*" >&2; exit 1; }
 
+# Resolve the boot config path (bookworm moved it to /boot/firmware).
+boot_config_path() {
+    if [[ -f /boot/firmware/config.txt ]]; then echo /boot/firmware/config.txt
+    elif [[ -f /boot/config.txt ]]; then echo /boot/config.txt
+    fi
+}
+
+# Print the name of a wireless interface backed by a PCIe device, if any.
+# The Pi's built-in WiFi is on the SDIO bus, so a PCIe-backed wireless
+# interface is necessarily the M.2 card.
+find_pcie_wifi_iface() {
+    local netdir devpath
+    for netdir in /sys/class/net/*; do
+        [[ -d "$netdir/phy80211" ]] || continue
+        devpath="$(readlink -f "$netdir/device" 2>/dev/null)" || continue
+        [[ "$devpath" == *"/pci"* ]] && { basename "$netdir"; return 0; }
+    done
+    return 1
+}
+
+# True if the given interface's PHY advertises AP mode.
+iface_supports_ap() {
+    local iface="$1" phy
+    phy="$(cat "/sys/class/net/$iface/phy80211/name" 2>/dev/null)" || return 1
+    iw phy "$phy" info 2>/dev/null \
+        | grep -A 20 'Supported interface modes' \
+        | grep -qE '^[[:space:]]*\* AP$'
+}
+
 # ---------------------------------------------------------------------------
 # Preflight
 # ---------------------------------------------------------------------------
@@ -43,6 +72,10 @@ source "$CONFIG_ENV"
 : "${DHCP_RANGE_START:=192.168.50.100}"
 : "${DHCP_RANGE_END:=192.168.50.200}"
 : "${CONTROL_PORT:=8080}"
+: "${PCIE_WIFI:=auto}"       # auto | off — detect an M.2 PCIe WiFi HAT and use it as the AP
+: "${PCIE_WIFI_GEN:=2}"      # PCIe link gen for the M.2 slot: 2 (safe default) or 3 (faster, uncertified)
+
+pcie_just_enabled=0
 
 [[ ${#WIFI_PASSPHRASE} -ge 8 ]] || die "WIFI_PASSPHRASE must be at least 8 characters"
 
@@ -63,9 +96,82 @@ apt-get install -y --no-install-recommends \
     python3 \
     python3-pip \
     python3-venv \
-    wireless-tools
+    wireless-tools \
+    iw \
+    pciutils
 
 success "Packages installed"
+
+# ---------------------------------------------------------------------------
+# 1b. PCIe M.2 WiFi HAT (e.g. ZDE ZP590A: Intel BE200 / AX210 / AX200,
+#     MediaTek MT7922). Enable the Pi 5 PCIe port, install vendor firmware,
+#     and — if a usable card is found — use it as the access point.
+# ---------------------------------------------------------------------------
+
+if [[ "$PCIE_WIFI" == [Oo][Ff][Ff] ]]; then
+    info "PCIE_WIFI=off — skipping M.2 WiFi HAT detection; using built-in $AP_IFACE"
+else
+    info "Checking for PCIe M.2 WiFi HAT…"
+
+    BOOT_CONFIG="$(boot_config_path)"
+
+    # Enable the Pi 5 external PCIe port so the M.2 card enumerates.
+    if [[ -n "$BOOT_CONFIG" ]]; then
+        if ! grep -qE '^[[:space:]]*dtparam=pciex1([^_]|$)' "$BOOT_CONFIG"; then
+            printf '\n# wifi-impair: enable Pi 5 PCIe port for M.2 WiFi HAT\ndtparam=pciex1\n' >> "$BOOT_CONFIG"
+            pcie_just_enabled=1
+            info "Enabled PCIe (dtparam=pciex1) in $BOOT_CONFIG"
+        fi
+        if [[ "$PCIE_WIFI_GEN" == "3" ]] && ! grep -qE '^[[:space:]]*dtparam=pciex1_gen=3' "$BOOT_CONFIG"; then
+            echo 'dtparam=pciex1_gen=3' >> "$BOOT_CONFIG"
+            pcie_just_enabled=1
+            info "Set PCIe link to Gen3 in $BOOT_CONFIG"
+        fi
+    else
+        warn "Could not find config.txt — cannot enable PCIe automatically"
+    fi
+
+    # Is a wireless card visible on the PCIe bus yet?
+    pcie_wifi_line="$(lspci -nn 2>/dev/null | grep -Ei 'network controller|wireless' | head -n1 || true)"
+
+    if [[ -z "$pcie_wifi_line" ]]; then
+        if [[ "$pcie_just_enabled" -eq 1 ]]; then
+            warn "PCIe was just enabled but no card is visible yet."
+            warn "Reboot the Pi and re-run setup.sh to activate the M.2 WiFi card."
+        else
+            info "No PCIe WiFi card detected — using built-in $AP_IFACE"
+        fi
+    else
+        info "Detected PCIe device: $pcie_wifi_line"
+
+        # Install vendor firmware based on the PCI vendor ID.
+        case "$pcie_wifi_line" in
+            *8086:*) fw_pkgs="firmware-iwlwifi";                         chip="Intel (iwlwifi)";;
+            *14c3:*) fw_pkgs="firmware-misc-nonfree firmware-mediatek";  chip="MediaTek (mt7921e)";;
+            *)       fw_pkgs="firmware-misc-nonfree";                    chip="unknown";;
+        esac
+        info "Chipset: $chip — installing firmware ($fw_pkgs)…"
+        # shellcheck disable=SC2086
+        apt-get install -y --no-install-recommends $fw_pkgs 2>/dev/null \
+            || warn "Could not install: $fw_pkgs (your OS image may already bundle it)"
+
+        # Find the interface the driver created for the card.
+        pcie_iface="$(find_pcie_wifi_iface || true)"
+
+        if [[ -z "$pcie_iface" ]]; then
+            warn "PCIe card present but no wireless interface came up."
+            warn "Firmware may be missing (e.g. the BE200 needs a recent kernel + iwlwifi firmware)."
+            [[ "$pcie_just_enabled" -eq 1 ]] && warn "Reboot and re-run setup.sh."
+            info "Falling back to built-in $AP_IFACE"
+        elif ! iface_supports_ap "$pcie_iface"; then
+            warn "$pcie_iface ($chip) does not advertise AP mode — cannot host the SSID on it."
+            warn "Intel cards in particular often lack usable AP support; keeping built-in $AP_IFACE."
+        else
+            success "Using PCIe WiFi card '$pcie_iface' ($chip) as the access point"
+            AP_IFACE="$pcie_iface"
+        fi
+    fi
+fi
 
 # ---------------------------------------------------------------------------
 # 2. System user for Flask app
@@ -291,4 +397,11 @@ echo "  http://$AP_IP:$CONTROL_PORT"
 echo ""
 echo "  To SSH in from WAN: ssh pi@<eth0-ip>"
 echo "  Emergency tc reset : sudo /usr/local/sbin/impair-helper clear"
+echo ""
+echo "  AP interface : $AP_IFACE"
+if [[ "${pcie_just_enabled}" -eq 1 ]]; then
+    echo ""
+    echo "  NOTE: The Pi 5 PCIe port was just enabled. Reboot and re-run"
+    echo "        setup.sh so the M.2 WiFi card is detected and used as the AP."
+fi
 echo "================================================================"
