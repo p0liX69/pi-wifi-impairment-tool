@@ -126,7 +126,11 @@ def apply_impairment(
     # Ingress: test devices → internet (upload direction for clients), via ifb redirect
     netem_args = _build_netem_args(latency_ms, jitter_ms, loss_pct, dup_pct, corrupt_pct, reorder_pct)
     if netem_args or rate_up_kbps > 0:
-        _run(["modprobe", "ifb", "numifbs=1"])
+        _run(["modprobe", "ifb"])
+        # modprobe's numifbs= only takes effect the first time the module is
+        # loaded — if it was already loaded (by the OS or a prior run) with
+        # numifbs=0, the device is never created. Create it explicitly instead.
+        _run_ok(["ip", "link", "add", IFB_IF, "type", "ifb"])
         _run(["ip", "link", "set", IFB_IF, "up"])
         _run(["tc", "qdisc", "add", "dev", AP_IF, "ingress"])
         _run([
