@@ -241,7 +241,14 @@ main {
   font-weight: 600;
   transition: transform 0.3s ease;
   z-index: 100;
-  white-space: nowrap;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-width: min(90vw, 700px);
+  max-height: 60vh;
+  overflow-y: auto;
+  text-align: left;
+  font-family: ui-monospace, monospace;
+  cursor: pointer;
 }
 #toast.show { transform: translateX(-50%) translateY(0); }
 #toast.error { border-color: var(--danger); color: var(--danger); }
@@ -482,7 +489,9 @@ function showToast(msg, type = '') {
   el.textContent = msg;
   el.className = 'show ' + type;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.className = '', 3000);
+  el.onclick = () => { clearTimeout(toastTimer); el.className = ''; };
+  const duration = type === 'error' ? 20000 : 3000;
+  toastTimer = setTimeout(() => el.className = '', duration);
 }
 
 async function init() {
