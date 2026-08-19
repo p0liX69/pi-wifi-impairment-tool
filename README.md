@@ -335,6 +335,30 @@ sudo systemctl status nftables
 sudo nft list ruleset
 ```
 
+### Updating after a `git pull`
+
+`/opt/wifi-impair` and `/usr/local/sbin/impair-helper` are **copies** made by `setup.sh` at install time, not live checkouts — `git pull` in your cloned repo has no effect on the running deployment by itself. `cd` into `/opt/wifi-impair` will also fail with `Permission denied`: it's owned by the unprivileged, login-disabled `impair` system user (`chmod 750`).
+
+After pulling changes, re-sync the pieces that changed:
+
+```bash
+cd ~/pi-wifi-impairment-tool   # wherever you cloned it
+git pull
+
+# App code / templates (owned by the impair user)
+sudo cp app.py profiles.json /opt/wifi-impair/
+sudo cp -r impair templates /opt/wifi-impair/
+sudo chown -R impair:impair /opt/wifi-impair
+sudo systemctl restart wifi-impair
+
+# Root helper (standalone file, root-owned, invoked fresh via sudo each call — no restart needed)
+sudo cp helper/impair_helper.py /usr/local/sbin/impair-helper
+sudo chown root:root /usr/local/sbin/impair-helper
+sudo chmod 755 /usr/local/sbin/impair-helper
+```
+
+Re-running `sudo bash setup.sh` also picks up all changes and is idempotent, if you'd rather not sync files by hand.
+
 ---
 
 ## Troubleshooting
@@ -356,12 +380,19 @@ cat /proc/sys/net/ipv4/ip_forward   # should be 1
 sudo systemctl restart nftables
 ```
 
+**Upload shaping fails with `Cannot find device "ifb0"`**
+
+Fixed as of the helper creating `ifb0` explicitly via `ip link add ifb0 type ifb` rather than relying on `modprobe ifb numifbs=1`. The `numifbs=` module parameter only takes effect the first time the module is inserted — if `ifb` was already loaded (by the OS or an older helper version) with `numifbs=0`, later `modprobe` calls silently no-op and the device never gets created. If you still hit this after updating, confirm `/usr/local/sbin/impair-helper` was actually redeployed (it's a standalone copy, not a symlink into the repo):
+```bash
+sudo cp helper/impair_helper.py /usr/local/sbin/impair-helper
+```
+
 **Upload shaping not working after reboot**
 
 The `ifb` module may not have loaded:
 ```bash
 lsmod | grep ifb
-sudo modprobe ifb numifbs=1
+sudo modprobe ifb
 ```
 
 If it's missing from lsmod, check `/etc/modules-load.d/wifi-impair.conf` contains `ifb` — setup.sh creates this, but some Pi OS images have a non-standard modules path.
